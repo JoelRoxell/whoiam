@@ -1,0 +1,24 @@
+on:
+  push:
+    branches:
+      - main
+  # release:
+  #   types:
+  #     - created
+
+jobs:
+  build-amd:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@master
+
+    - name: "Update Rust to the latest stable version"
+      run: rustup update stable
+
+    - name: Build release version
+      run: cargo build --release
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: apple-aarch64-whoiam
+        path: ./target/release/whoiam
