@@ -1,8 +1,9 @@
 use aws_sdk_account as account;
 use aws_sdk_iam as iam;
 use aws_sdk_sts as sts;
-use serde::Serialize;
 use std::error::Error;
+
+use whoiam::DisplayInformation;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -28,10 +29,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!(
         "{}",
         serde_json::to_string_pretty(&DisplayInformation {
-            name: contact_info.full_name().unwrap_or("n/a").to_string(),
-            arn: sts_res.arn().unwrap_or("n/a").to_string(),
-            user_id: sts_res.user_id().unwrap_or("n/a").to_string(),
-            account: sts_res.account().unwrap_or("n/a").to_string(),
+            name: contact_info.full_name().unwrap_or("").to_string(),
+            arn: sts_res.arn().unwrap_or("").to_string(),
+            user_id: sts_res.user_id().unwrap_or("").to_string(),
+            account: sts_res.account().unwrap_or("").to_string(),
             aliases: match alias.account_aliases() {
                 Some(a) => a.to_owned(),
                 None => vec![],
@@ -41,13 +42,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
 
     Ok(())
-}
-
-#[derive(Serialize)]
-struct DisplayInformation {
-    name: String,
-    account: String,
-    user_id: String,
-    arn: String,
-    aliases: Vec<String>,
 }
