@@ -1428,6 +1428,7 @@ dependencies = [
  "aws-sdk-account",
  "aws-sdk-iam",
  "aws-sdk-sts",
+ "aws-smithy-http",
  "serde",
  "serde_json",
  "tokio",
