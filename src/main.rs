@@ -19,11 +19,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
 
     let alias = ali_res.expect("Failed to read alias from AWS");
+    let sts_res = sts_res.expect("STS request failed");
     let contact_info = acc_res.expect("Failed to read account information from AWS");
     let contact_info = contact_info
         .contact_information()
         .expect("Contact information is missing from the response");
-    let sts_res = sts_res.expect("STS request failed");
 
     println!(
         "{}",
