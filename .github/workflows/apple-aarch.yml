@@ -7,18 +7,18 @@ on:
   #     - created
 
 jobs:
-  build-amd:
+  build-apple-aarch64:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@master
 
-    - name: "Update Rust to the latest stable version"
-      run: rustup update stable
+    - name: Install latest version of aarch64
+      run: rustup target add aarch64-apple-darwin
 
     - name: Build release version
-      run: cargo build --release
+      run: cargo build --release --target aarch64-apple-darwin
 
     - uses: actions/upload-artifact@v3
       with:
         name: apple-aarch64-whoiam
-        path: ./target/release/whoiam
+        path: ./target/aarch64-apple-darwin/release/whoiam
