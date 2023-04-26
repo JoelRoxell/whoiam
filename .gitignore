@@ -1,5 +1,5 @@
 /target
 node_modules
-.vitepress
-tools
 dist
+cache
+tools
