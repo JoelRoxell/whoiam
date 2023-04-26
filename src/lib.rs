@@ -1,53 +1,27 @@
-use account::error::ProvideErrorMetadata;
+use aws_config::SdkConfig;
 use aws_sdk_account as account;
 use aws_sdk_iam as iam;
 use aws_sdk_sts as sts;
 use serde::{Deserialize, Serialize};
 
-pub async fn read_aws_information() -> Result<DisplayInformation, AwsError> {
+static NA: &str = "n/a";
+
+pub async fn read_aws_information(is_sts: bool) -> DisplayInformation {
     let shared_config = aws_config::load_from_env().await;
 
-    let client_sts = sts::Client::new(&shared_config);
-    let client_account = account::Client::new(&shared_config);
-    let client_iam = iam::Client::new(&shared_config);
+    if is_sts {
+        let (arn, user_id, account) = read_sts_data(&shared_config).await;
 
-    let (acc_res, sts_res, iam_res) = tokio::join!(
-        client_account.get_contact_information().send(),
-        client_sts.get_caller_identity().send(),
-        client_iam.list_account_aliases().send()
-    );
+        DisplayInformation::new(NA.to_string(), account, user_id, arn, vec![])
+    } else {
+        let ((arn, account, user_id), user_name, aliases) = tokio::join!(
+            read_sts_data(&shared_config),
+            read_account_data(&shared_config),
+            read_iam_data(&shared_config),
+        );
 
-    let alias = iam_res.map_err(|e| {
-        AwsError::IAMError(
-            e.message()
-                .unwrap_or("Failed to list account aliases")
-                .to_owned(),
-        )
-    })?;
-    let sts_res = sts_res
-        .map_err(|e| AwsError::STSError(e.message().unwrap_or("STS request failed").to_owned()))?;
-    let contact_info = acc_res.map_err(|e| {
-        AwsError::AccoutError(
-            e.message()
-                .unwrap_or("Failed to read account information from AWS")
-                .to_owned(),
-        )
-    })?;
-
-    Ok(DisplayInformation {
-        name: match contact_info.contact_information() {
-            Some(contact) => contact.full_name().unwrap_or(""),
-            None => "",
-        }
-        .to_string(),
-        arn: sts_res.arn().to_owned().unwrap_or("").to_string(),
-        user_id: sts_res.user_id().unwrap_or("").to_string(),
-        account: sts_res.account().unwrap_or("").to_string(),
-        aliases: match alias.account_aliases() {
-            Some(a) => a.to_owned(),
-            None => vec![],
-        },
-    })
+        DisplayInformation::new(user_name, account, user_id, arn, aliases)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -59,9 +33,71 @@ pub struct DisplayInformation {
     pub aliases: Vec<String>,
 }
 
-#[derive(Debug)]
-pub enum AwsError {
-    IAMError(String),
-    STSError(String),
-    AccoutError(String),
+impl DisplayInformation {
+    fn new(
+        name: String,
+        account: String,
+        user_id: String,
+        arn: String,
+        aliases: Vec<String>,
+    ) -> Self {
+        Self {
+            arn,
+            name,
+            account,
+            user_id,
+            aliases,
+        }
+    }
+}
+
+async fn read_sts_data(c: &SdkConfig) -> (String, String, String) {
+    let client_sts = sts::Client::new(c);
+    let sts_data = client_sts.get_caller_identity().send().await;
+
+    match sts_data {
+        Ok(d) => (
+            d.arn().to_owned().unwrap_or(NA).to_string(),
+            d.user_id().unwrap_or(NA).to_string(),
+            d.account().unwrap_or(NA).to_string(),
+        ),
+        Err(e) => {
+            eprintln!("STS request failed::{:?}", e);
+
+            (NA.to_string(), NA.to_string(), NA.to_string())
+        }
+    }
+}
+
+async fn read_iam_data(c: &SdkConfig) -> Vec<String> {
+    match iam::Client::new(c).list_account_aliases().send().await {
+        Ok(a) => {
+            let a = a.account_aliases().unwrap_or_default();
+
+            a.to_vec()
+        }
+        Err(e) => {
+            eprintln!("Failed to list account aliases::{:?}", e);
+
+            vec![]
+        }
+    }
+}
+
+async fn read_account_data(c: &SdkConfig) -> String {
+    match account::Client::new(c)
+        .get_contact_information()
+        .send()
+        .await
+    {
+        Ok(c) => match c.contact_information() {
+            Some(c) => c.full_name().unwrap_or(NA).to_string(),
+            None => NA.to_string(),
+        },
+        Err(e) => {
+            eprintln!("Failed to read contact information::{:?}", e);
+
+            NA.to_string()
+        }
+    }
 }
