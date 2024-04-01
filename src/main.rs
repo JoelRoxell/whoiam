@@ -1,5 +1,5 @@
 use clap::{Arg, ArgAction, Command};
-use whoiam::read_aws_information;
+use whoiam::collect_aws_information;
 
 /// This is a simple cli to dump useful aws-account information to stdout
 #[tokio::main]
@@ -8,6 +8,7 @@ async fn main() {
         .version("0.1.1")
         .about(
             r#"This CLI dumps some useful information about your AWS-account to stdout.
+Information is retrieved from STS, IAM, and AWS-SDK-Account by default.
 
 Created by:
 
@@ -30,11 +31,18 @@ Created by:
                 .short('s')
                 .long("sts")
                 .action(ArgAction::SetTrue)
-                .help("Force the cli to only retrieve info from the sts api"),
+                .help("Only retrieve info from the sts api"),
+        )
+        .arg(
+            Arg::new("verbose")
+                .short('v')
+                .long("verbose")
+                .action(ArgAction::SetTrue)
+                .help("Outputs err messages to stderr"),
         )
         .get_matches();
 
-    let info = read_aws_information(matches.get_flag("sts")).await;
+    let info = collect_aws_information(matches.get_flag("sts"), matches.get_flag("verbose")).await;
 
     println!(
         "{}",

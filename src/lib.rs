@@ -1,35 +1,92 @@
-use aws_config::SdkConfig;
+use aws_config::{BehaviorVersion, SdkConfig};
 use aws_sdk_account as account;
 use aws_sdk_iam as iam;
 use aws_sdk_sts as sts;
 use serde::{Deserialize, Serialize};
 
-static NA: &str = "n/a";
-
-pub async fn read_aws_information(is_sts: bool) -> DisplayInformation {
-    let shared_config = aws_config::load_from_env().await;
+pub async fn collect_aws_information(is_sts: bool, is_verbose: bool) -> DisplayInformation {
+    let shared_config = aws_config::load_defaults(BehaviorVersion::v2023_11_09()).await;
 
     if is_sts {
-        let (arn, user_id, account) = read_sts_data(&shared_config).await;
+        let (arn, user_id, account) = retrieved_sts_data(&shared_config, &is_verbose).await;
 
-        DisplayInformation::new(NA.to_string(), account, user_id, arn, vec![])
+        DisplayInformation::new(EMPTY_STR.to_string(), account, user_id, arn, vec![])
     } else {
         let ((arn, account, user_id), user_name, aliases) = tokio::join!(
-            read_sts_data(&shared_config),
-            read_account_data(&shared_config),
-            read_iam_data(&shared_config),
+            retrieved_sts_data(&shared_config, &is_verbose),
+            retrieved_account_data(&shared_config, &is_verbose),
+            retrieved_iam_data(&shared_config, &is_verbose),
         );
 
         DisplayInformation::new(user_name, account, user_id, arn, aliases)
     }
 }
 
+async fn retrieved_sts_data(c: &SdkConfig, verbose: &bool) -> (Arn, UserId, Account) {
+    let client_sts = sts::Client::new(c);
+    let sts_data = client_sts.get_caller_identity().send().await;
+
+    match sts_data {
+        Ok(d) => (
+            d.arn().to_owned().unwrap_or(EMPTY_STR).to_string(),
+            d.user_id().unwrap_or(EMPTY_STR).to_string(),
+            d.account().unwrap_or(EMPTY_STR).to_string(),
+        ),
+        Err(e) => {
+            if *verbose {
+                eprintln!("STS request failed::{:?}", e);
+            }
+
+            (
+                EMPTY_STR.to_string(),
+                EMPTY_STR.to_string(),
+                EMPTY_STR.to_string(),
+            )
+        }
+    }
+}
+
+async fn retrieved_iam_data(c: &SdkConfig, verbose: &bool) -> Vec<String> {
+    match iam::Client::new(c).list_account_aliases().send().await {
+        Ok(a) => a.account_aliases().to_vec(),
+        Err(e) => {
+            if *verbose {
+                eprintln!("Failed to list account aliases::{:?}", e);
+            }
+
+            vec![]
+        }
+    }
+}
+
+async fn retrieved_account_data(c: &SdkConfig, verbose: &bool) -> String {
+    match account::Client::new(c)
+        .get_contact_information()
+        .send()
+        .await
+    {
+        Ok(c) => match c.contact_information() {
+            Some(c) => c.full_name().to_string(),
+            None => EMPTY_STR.to_string(),
+        },
+        Err(e) => {
+            if *verbose {
+                eprintln!("Failed to read contact information::{:?}", e);
+            }
+
+            EMPTY_STR.to_string()
+        }
+    }
+}
+
+static EMPTY_STR: &str = "";
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DisplayInformation {
     pub name: String,
-    pub account: String,
-    pub user_id: String,
-    pub arn: String,
+    pub account: Account,
+    pub user_id: UserId,
+    pub arn: Arn,
     pub aliases: Vec<String>,
 }
 
@@ -51,53 +108,6 @@ impl DisplayInformation {
     }
 }
 
-async fn read_sts_data(c: &SdkConfig) -> (String, String, String) {
-    let client_sts = sts::Client::new(c);
-    let sts_data = client_sts.get_caller_identity().send().await;
-
-    match sts_data {
-        Ok(d) => (
-            d.arn().to_owned().unwrap_or(NA).to_string(),
-            d.user_id().unwrap_or(NA).to_string(),
-            d.account().unwrap_or(NA).to_string(),
-        ),
-        Err(e) => {
-            eprintln!("STS request failed::{:?}", e);
-
-            (NA.to_string(), NA.to_string(), NA.to_string())
-        }
-    }
-}
-
-async fn read_iam_data(c: &SdkConfig) -> Vec<String> {
-    match iam::Client::new(c).list_account_aliases().send().await {
-        Ok(a) => {
-            let a = a.account_aliases().unwrap_or_default();
-
-            a.to_vec()
-        }
-        Err(e) => {
-            eprintln!("Failed to list account aliases::{:?}", e);
-
-            vec![]
-        }
-    }
-}
-
-async fn read_account_data(c: &SdkConfig) -> String {
-    match account::Client::new(c)
-        .get_contact_information()
-        .send()
-        .await
-    {
-        Ok(c) => match c.contact_information() {
-            Some(c) => c.full_name().unwrap_or(NA).to_string(),
-            None => NA.to_string(),
-        },
-        Err(e) => {
-            eprintln!("Failed to read contact information::{:?}", e);
-
-            NA.to_string()
-        }
-    }
-}
+type Arn = String;
+type UserId = String;
+type Account = String;
