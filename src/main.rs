@@ -7,8 +7,8 @@ async fn main() {
     let matches = Command::new("whoiam")
         .version("0.1.1")
         .about(
-            r#"This CLI dumps some useful information about your AWS-account to stdout.
-Information is retrieved from STS, IAM, and AWS-SDK-Account by default.
+            r#"
+This CLI dumps some useful information about your AWS-account to stdout. Information is retrieved from STS, IAM, and AWS-SDK-Account by default.
 
 Created by:
 
